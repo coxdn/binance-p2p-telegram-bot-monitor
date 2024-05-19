@@ -10,7 +10,7 @@ class TelegramBot:
         # Setup command handlers
         self.bot.message_handler(commands=['start'])(self.start)
         self.bot.message_handler(commands=['bynick'])(self.by_nick)
-        self.bot.message_handler(commands=['byrate'])(self.by_rate)
+        self.bot.message_handler(commands=['byprice'])(self.by_price)
         self.bot.message_handler(commands=['stop'])(self.stop_monitoring)
         self.bot.message_handler(commands=['list'])(self.list_orders)
 
@@ -23,9 +23,9 @@ class TelegramBot:
     def initialize_user_data(self, chat_id):
         if chat_id not in self.monitor.user_data:
             self.monitor.user_data[chat_id] = {
-                'is_monitoring': False, 'target_user': None, 'target_order': None,
+                'is_monitoring': False, 'target_nick': None, 'target_order': None,
                 'trade_type': None, 'trans_amount': None, 'pay_type': None,
-                'banks': [], 'users': [], 'target_rate': None, 'is_monitoring_rate': False,
+                'banks': [], 'users': [], 'target_price': None, 'is_monitoring': False,
                 'command': None}
 
     def start(self, message):
@@ -33,23 +33,22 @@ class TelegramBot:
         self.initialize_user_data(chat_id)
         self.bot.reply_to(
             message,
-            'Hello! Use /bynick to monitor orders by user nickname or /byrate to monitor orders by rate. '
+            'Hello! Use /bynick to monitor orders by user nickname or /byprice to monitor orders by price. '
             'Choose one of them to start.')
 
     def by_nick(self, message):
         self.prepare_for_monitoring(message, 'bynick')
 
-    def by_rate(self, message):
-        self.prepare_for_monitoring(message, 'byrate')
+    def by_price(self, message):
+        self.prepare_for_monitoring(message, 'byprice')
 
     def prepare_for_monitoring(self, message, command):
         chat_id = message.chat.id
         self.initialize_user_data(chat_id)
 
         # Stop any ongoing monitoring
-        if self.monitor.user_data[chat_id]['is_monitoring'] or self.monitor.user_data[chat_id]['is_monitoring_rate']:
+        if self.monitor.user_data[chat_id]['is_monitoring']:
             self.monitor.stop_monitoring(chat_id)
-            self.monitor.stop_rate_monitoring(chat_id)
             self.bot.send_message(chat_id, 'Previous monitoring stopped.')
 
         self.monitor.user_data[chat_id]['command'] = command
@@ -124,11 +123,11 @@ class TelegramBot:
         command = self.monitor.user_data[chat_id]['command']
         if command == 'bynick':
             self.show_users(chat_id)
-        elif command == 'byrate':
-            self.show_rate_input(chat_id)
+        elif command == 'byprice':
+            self.show_price_input(chat_id)
 
     def show_users(self, chat_id):
-        users = self.monitor.list_users(chat_id, self.monitor.user_data[chat_id]['trans_amount'])
+        users = self.monitor.list_nicknames(chat_id)
         markup = InlineKeyboardMarkup()
         for user, price in users:
             markup.add(InlineKeyboardButton(f'{user} ({price})', callback_data=f'user:{user}'))
@@ -137,33 +136,34 @@ class TelegramBot:
     def set_user(self, call):
         chat_id = call.message.chat.id
         user = call.data.split(':')[1]
-        self.monitor.user_data[chat_id]['target_user'] = user
+        self.monitor.user_data[chat_id]['target_nick'] = user
         self.bot.send_message(chat_id, f'User set to: {user}')
         self.start_monitoring_by_nick(chat_id)
 
-    def show_rate_input(self, chat_id):
-        self.bot.send_message(chat_id, 'Please enter the target rate (e.g., 40.34):')
-        self.bot.register_next_step_handler_by_chat_id(chat_id, self.set_rate)
+    def show_price_input(self, chat_id):
+        self.list_orders_by_chat_id(chat_id)
+        self.bot.send_message(chat_id, 'Please enter the target price (e.g., 41.23):')
+        self.bot.register_next_step_handler_by_chat_id(chat_id, self.set_price)
 
-    def set_rate(self, message):
+    def set_price(self, message):
         chat_id = message.chat.id
         try:
-            rate = float(message.text)
-            self.monitor.user_data[chat_id]['target_rate'] = rate
-            self.bot.send_message(chat_id, f'Rate set to: {rate}')
-            self.start_monitoring_by_rate(chat_id)
+            price = float(message.text)
+            self.monitor.user_data[chat_id]['target_price'] = price
+            self.bot.send_message(chat_id, f'Price set to: {price}')
+            self.start_monitoring_by_price(chat_id)
         except ValueError:
-            self.bot.reply_to(message, 'Invalid rate. Please enter a number.')
+            self.bot.reply_to(message, 'Invalid price. Please enter a number.')
 
     def start_monitoring_by_nick(self, chat_id):
-        user = self.monitor.user_data[chat_id]['target_user']
-        self.monitor.start_monitoring(chat_id, user, self.notify)
+        user = self.monitor.user_data[chat_id]['target_nick']
+        self.monitor.start_nick_monitoring(chat_id, user, self.notify)
         self.bot.send_message(chat_id, f'Monitoring started for user: {user}')
 
-    def start_monitoring_by_rate(self, chat_id):
-        rate = self.monitor.user_data[chat_id]['target_rate']
-        self.monitor.start_rate_monitoring(chat_id, rate, self.notify)
-        self.bot.send_message(chat_id, f'Monitoring started for rate: {rate}')
+    def start_monitoring_by_price(self, chat_id):
+        price = self.monitor.user_data[chat_id]['target_price']
+        self.monitor.start_price_monitoring(chat_id, price, self.notify)
+        self.bot.send_message(chat_id, f'Monitoring started for price: {price}')
 
     def notify(self, chat_id, msg):
         self.bot.send_message(chat_id, msg)
@@ -172,19 +172,16 @@ class TelegramBot:
         chat_id = message.chat.id
         if chat_id in self.monitor.user_data:
             self.monitor.stop_monitoring(chat_id)
-            self.monitor.stop_rate_monitoring(chat_id)
             self.bot.send_message(chat_id, 'Monitoring has been stopped.')
         else:
             self.bot.send_message(chat_id, 'No active monitoring found.')
 
     def list_orders(self, message):
         chat_id = message.chat.id
-        self.initialize_user_data(chat_id)
+        self.list_orders_by_chat_id(chat_id)
 
-        orders = self.monitor.get_p2p_orders(
-            trans_amount=self.monitor.user_data[chat_id].get('trans_amount'),
-            pay_type=self.monitor.user_data[chat_id].get('pay_type')
-        )
+    def list_orders_by_chat_id(self, chat_id):
+        orders = self.monitor.get_p2p_orders(chat_id)
 
         if not orders:
             self.bot.send_message(chat_id, 'No orders found.')

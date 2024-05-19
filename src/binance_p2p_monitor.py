@@ -11,17 +11,22 @@ class BinanceP2PMonitor:
         self.rows = rows
         self.user_data = {}
 
-    def get_p2p_orders(self, trans_amount=None, pay_type=None):
+    def get_p2p_orders(self, chat_id):
         url = 'https://p2p.binance.com/bapi/c2c/v2/friendly/c2c/adv/search'
         headers = {
             'Content-Type': 'application/json'
         }
+
+        trade_type = self.user_data[chat_id].get('trade_type')
+        trans_amount = self.user_data[chat_id].get('trans_amount')
+        pay_type = self.user_data[chat_id].get('pay_type')
+
         data = {
             "asset": self.asset,
             "fiat": self.fiat,
             "page": 1,
             "rows": self.rows,
-            "tradeType": self.trade_type,
+            "tradeType": trade_type if trade_type else self.trade_type,
             "transAmount": trans_amount if trans_amount else "",
             "payTypes": [pay_type] if pay_type else [],
             "publisherType": None
@@ -39,12 +44,12 @@ class BinanceP2PMonitor:
                                                                                            order['adv'][
                                                                                                'tradeMethods']])
 
-    def list_users(self, chat_id, trans_amount):
-        return self._extract_banks_or_users(chat_id, key='users', trans_amount=trans_amount, extractor=lambda order: [
+    def list_nicknames(self, chat_id):
+        return self._extract_banks_or_users(chat_id, key='users', extractor=lambda order: [
             (order['advertiser']['nickName'], order['adv']['price'])])
 
-    def _extract_banks_or_users(self, chat_id, key, extractor, trans_amount=None):
-        orders = self.get_p2p_orders(trans_amount=trans_amount, pay_type=self.user_data[chat_id].get('pay_type'))
+    def _extract_banks_or_users(self, chat_id, key, extractor):
+        orders = self.get_p2p_orders(chat_id)
         if orders is None:
             return []
 
@@ -59,11 +64,11 @@ class BinanceP2PMonitor:
         self.user_data[chat_id][key] = extracted
         return self.user_data[chat_id][key]
 
-    def start_monitoring(self, chat_id, target_user, notify_func):
-        self._start_monitoring(chat_id, 'user', target_user, notify_func, self._monitor_orders)
+    def start_nick_monitoring(self, chat_id, target_nick, notify_func):
+        self._start_monitoring(chat_id, 'nick', target_nick, notify_func, self._monitor_orders)
 
-    def start_rate_monitoring(self, chat_id, target_rate, notify_func):
-        self._start_monitoring(chat_id, 'rate', target_rate, notify_func, self._monitor_rates)
+    def start_price_monitoring(self, chat_id, target_price, notify_func):
+        self._start_monitoring(chat_id, 'price', target_price, notify_func, self._monitor_prices)
 
     def _start_monitoring(self, chat_id, target_key, target_value, notify_func, monitor_method):
         self.user_data[chat_id][f'target_{target_key}'] = target_value
@@ -73,15 +78,9 @@ class BinanceP2PMonitor:
     def stop_monitoring(self, chat_id):
         self.user_data[chat_id]['is_monitoring'] = False
 
-    def stop_rate_monitoring(self, chat_id):
-        self.user_data[chat_id]['is_monitoring_rate'] = False
-
     def _monitor_orders(self, chat_id, notify_func):
         while self.user_data[chat_id]['is_monitoring']:
-            orders = self.get_p2p_orders(
-                trans_amount=self.user_data[chat_id].get('trans_amount'),
-                pay_type=self.user_data[chat_id].get('pay_type')
-            )
+            orders = self.get_p2p_orders(chat_id)
 
             if orders is None:
                 notify_func(chat_id, 'Error fetching orders from Binance.')
@@ -89,28 +88,25 @@ class BinanceP2PMonitor:
                 continue
 
             user_order = next((
-                order for order in orders if order['advertiser']['nickName'] == self.user_data[chat_id]['target_user']
+                order for order in orders if order['advertiser']['nickName'] == self.user_data[chat_id]['target_nick']
             ), None)
 
             if user_order and not self.user_data[chat_id]['target_order']:
                 self.user_data[chat_id]['target_order'] = user_order
                 notify_func(
                     chat_id,
-                    f'Found an order from user {self.user_data[chat_id]["target_user"]}: '
+                    f'Found an order from user {self.user_data[chat_id]["target_nick"]}: '
                     f'{self.user_data[chat_id]["target_order"]["adv"]["price"]}')
             elif not user_order and self.user_data[chat_id]['target_order']:
-                notify_func(chat_id, f'The order from user {self.user_data[chat_id]["target_user"]} has disappeared.')
+                notify_func(chat_id, f'The order from user {self.user_data[chat_id]["target_nick"]} has disappeared.')
                 self.stop_monitoring(chat_id)
                 break
 
             time.sleep(3)
 
-    def _monitor_rates(self, chat_id, notify_func):
-        while self.user_data[chat_id]['is_monitoring_rate']:
-            orders = self.get_p2p_orders(
-                trans_amount=self.user_data[chat_id].get('trans_amount'),
-                pay_type=self.user_data[chat_id].get('pay_type')
-            )
+    def _monitor_prices(self, chat_id, notify_func):
+        while self.user_data[chat_id]['is_monitoring']:
+            orders = self.get_p2p_orders(chat_id)
 
             if orders is None:
                 notify_func(chat_id, 'Error fetching orders from Binance.')
@@ -122,11 +118,14 @@ class BinanceP2PMonitor:
                 continue
 
             first_order_price = float(orders[0]['adv']['price'])
-            target_rate = float(self.user_data[chat_id]['target_rate'])
+            target_price = float(self.user_data[chat_id]['target_price'])
+            trade_type = self.user_data[chat_id]['trade_type']
 
-            if (self.user_data[chat_id]['trade_type'] == 'SELL' and first_order_price <= target_rate) or \
-                    (self.user_data[chat_id]['trade_type'] == 'BUY' and first_order_price >= target_rate):
-                notify_func(chat_id, f'Order matching the rate {target_rate} found: {first_order_price}')
-                self.stop_rate_monitoring(chat_id)
+            if (trade_type == 'SELL' and first_order_price <= target_price) or \
+                    (trade_type == 'BUY' and first_order_price >= target_price):
+                notify_func(
+                    chat_id,
+                    f'Monitoring stopped: Order matching the price {target_price} found: {first_order_price}')
+                self.stop_monitoring(chat_id)
 
             time.sleep(3)

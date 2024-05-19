@@ -1,6 +1,6 @@
 # Binance P2P Telegram Bot Monitor
 
-This project provides a Telegram bot for monitoring Binance P2P orders by user nickname or rate/price.
+This Telegram bot for monitoring Binance P2P orders by user nickname or price. It was created because push notifications from the Binance app sometimes do not work on certain phones, requiring users to constantly check their phones to see if their order has been fulfilled. The bot monitors the specified order and notifies the subscribed user when the order disappears. It can also monitor when the price crosses a specified price, depending on the buy or sell section.
 
 ## Installation
 
@@ -34,7 +34,7 @@ Configure the following commands in your Telegram bot:
 ```
 start - Displays instructions on how to use the bot
 bynick - Start monitoring orders by user nickname
-byrate - Start monitoring orders by rate/price
+byprice - Start monitoring orders by price
 list - List orders by current settings
 stop - Stop monitoring
 ```
@@ -46,7 +46,7 @@ Start the bot by providing your Telegram bot token:
 python main.py <YOUR_TELEGRAM_BOT_TOKEN>
 ```
 
-The bot will guide you through setting up monitoring by user nickname or rate/price.
+The bot will guide you through setting up monitoring by user nickname or price.
 
 ## Notes
 
