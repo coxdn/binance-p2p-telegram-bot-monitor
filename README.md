@@ -6,7 +6,7 @@ This project provides a Telegram bot for monitoring Binance P2P orders by user n
 
 Clone the repository and navigate to the project directory.
 ```bash
-git clone https://github.com/yourusername/binance-p2p-monitor.git
+git clone https://github.com/coxdn/binance-p2p-monitor.git
 cd binance-p2p-monitor
 ```
 
