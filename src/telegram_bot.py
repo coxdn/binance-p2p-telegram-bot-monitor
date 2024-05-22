@@ -1,20 +1,21 @@
 import telebot
+import time
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
+from requests.exceptions import ReadTimeout
 
 
 class TelegramBot:
-    def __init__(self, token, monitor):
+    def __init__(self, token, monitor, retry_delay=5):
         self.bot = telebot.TeleBot(token)
         self.monitor = monitor
+        self.retry_delay = retry_delay
 
-        # Setup command handlers
         self.bot.message_handler(commands=['start'])(self.start)
         self.bot.message_handler(commands=['bynick'])(self.by_nick)
         self.bot.message_handler(commands=['byprice'])(self.by_price)
         self.bot.message_handler(commands=['stop'])(self.stop_monitoring)
         self.bot.message_handler(commands=['list'])(self.list_orders)
 
-        # Setup callback handlers
         self.bot.callback_query_handler(func=lambda call: call.data.startswith('trade_type'))(self.set_trade_type)
         self.bot.callback_query_handler(func=lambda call: call.data.startswith('amount'))(self.set_amount)
         self.bot.callback_query_handler(func=lambda call: call.data.startswith('bank'))(self.set_bank)
@@ -191,4 +192,15 @@ class TelegramBot:
         self.bot.send_message(chat_id, response)
 
     def run(self):
-        self.bot.polling()
+        self.polling_with_retries()
+
+    def polling_with_retries(self):
+        while True:
+            try:
+                self.bot.polling(non_stop=True, interval=0, timeout=60)
+            except ReadTimeout:
+                print(f"ReadTimeout occurred. Retrying in {self.retry_delay} seconds...")
+                time.sleep(self.retry_delay)
+            except Exception as e:
+                print(f"An unexpected error occurred: {e}")
+                time.sleep(self.retry_delay)
