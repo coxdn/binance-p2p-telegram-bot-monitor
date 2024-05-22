@@ -166,9 +166,6 @@ class TelegramBot:
         self.monitor.start_price_monitoring(chat_id, price, self.notify)
         self.bot.send_message(chat_id, f'Monitoring started for price: {price}')
 
-    def notify(self, chat_id, msg):
-        self.bot.send_message(chat_id, msg)
-
     def stop_monitoring(self, message):
         chat_id = message.chat.id
         if chat_id in self.monitor.user_data:
@@ -201,6 +198,27 @@ class TelegramBot:
             except ReadTimeout:
                 print(f"ReadTimeout occurred. Retrying in {self.retry_delay} seconds...")
                 time.sleep(self.retry_delay)
+            except ConnectionError:
+                print(f"ConnectionError occurred. Retrying in {self.retry_delay} seconds...")
+                time.sleep(self.retry_delay)
             except Exception as e:
                 print(f"An unexpected error occurred: {e}")
+                time.sleep(self.retry_delay)
+
+    def notify(self, chat_id, msg):
+        success = False
+        while not success:
+            try:
+                self.bot.send_message(chat_id, msg)
+                success = True
+            except ReadTimeout:
+                print(
+                    f"ReadTimeout occurred while sending message to {chat_id}. Retrying in {self.retry_delay} seconds...")
+                time.sleep(self.retry_delay)
+            except ConnectionError:
+                print(
+                    f"ConnectionError occurred while sending message to {chat_id}. Retrying in {self.retry_delay} seconds...")
+                time.sleep(self.retry_delay)
+            except Exception as e:
+                print(f"An unexpected error occurred while sending message to {chat_id}: {e}")
                 time.sleep(self.retry_delay)
