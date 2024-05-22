@@ -36,6 +36,7 @@ start - Displays instructions on how to use the bot
 bynick - Start monitoring orders by user nickname
 byprice - Start monitoring orders by price
 list - List orders by current settings
+status - Show current monitoring status
 stop - Stop monitoring
 ```
 
